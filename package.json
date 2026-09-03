@@ -1,0 +1,26 @@
+{
+  "name": "minibank-defi-lending-protocol",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "hardhat test",
+    "compile": "hardhat compile",
+    "node": "hardhat node",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "fund:local": "hardhat run scripts/transferMiniDai.js --network localhost"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "description": "A Hardhat-based DeFi lending protocol prototype with ETH collateral, mDAI borrowing, liquidation, rewards, DAO governance, and a frontend console.",
+  "devDependencies": {
+    "@nomicfoundation/ethereumjs-util": "^9.0.4",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "ethereumjs-util": "^7.1.5",
+    "hardhat": "^2.24.0",
+    "hardhat-tracer": "^3.2.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.9.3"
+  }
+}

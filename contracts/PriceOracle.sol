@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+/// @title Mock ETH/USD Oracle，用於本地測試清算機制
+/// @notice 此合約刻意保留 owner 手動餵價，方便 demo liquidation；不適合主網真實資金。
+contract PriceOracle is Ownable {
+    uint256 private price = 1000 * 1e8;
+
+    /// @notice 設定新的 ETH 價格（單位為 8 decimals）
+    /// @param _price 例如輸入 1600 * 1e8 代表 1600 美元
+    function setPrice(uint256 _price) external onlyOwner {
+        price = _price;
+    }
+
+    /// @notice 查詢當前 ETH 價格（8 decimals）
+    function getLatestETHPrice() external view returns (uint256) {
+        return price;
+    }
+}
