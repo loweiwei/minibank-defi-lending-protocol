@@ -52,17 +52,17 @@ flowchart LR
 
 | 合約 | 角色 |
 | --- | --- |
-| `contracts/BankV3.sol` | 核心協議，處理抵押、借款、還款、清算、LP、reward、reserve 與治理參數 |
-| `contracts/MiniDAI.sol` | 本地測試用穩定幣 mDAI，owner 或 minter 可 mint |
-| `contracts/aMDAI.sol` | LP share token，只有 BankV3 可以 mint / burn |
-| `contracts/BankToken.sol` | BKT governance / reward token，基於 OpenZeppelin ERC20Votes |
-| `contracts/BankGovernor.sol` | DAO 提案、投票、queue、execute 流程 |
-| `contracts/BankTimelock.sol` | TimelockController 包裝，治理操作需延遲執行 |
-| `contracts/PriceOracle.sol` | 本地測試用 Mock ETH/USD oracle，owner 可手動餵價以展示清算 |
+| [`contracts/BankV3.sol`](contracts/BankV3.sol) | 核心協議，處理抵押、借款、還款、清算、LP、reward、reserve 與治理參數 |
+| [`contracts/MiniDAI.sol`](contracts/MiniDAI.sol) | 本地測試用穩定幣 mDAI，owner 或 minter 可 mint |
+| [`contracts/aMDAI.sol`](contracts/aMDAI.sol) | LP share token，只有 BankV3 可以 mint / burn |
+| [`contracts/BankToken.sol`](contracts/BankToken.sol) | BKT governance / reward token，基於 OpenZeppelin ERC20Votes |
+| [`contracts/BankGovernor.sol`](contracts/BankGovernor.sol) | DAO 提案、投票、queue、execute 流程 |
+| [`contracts/BankTimelock.sol`](contracts/BankTimelock.sol) | TimelockController 包裝，治理操作需延遲執行 |
+| [`contracts/PriceOracle.sol`](contracts/PriceOracle.sol) | 本地測試用 Mock ETH/USD oracle，owner 可手動餵價以展示清算 |
 
 ## 核心流程
 
-如果想先用「角色」理解整個系統，建議先看 `PROJECT_ROLE_GUIDE.md`。該文件用 LP、Borrower、Liquidator、Protocol、DAO 與 Oracle Owner 的角度，整理每個角色的操作流程、獲利方式、風險與 demo 講法。
+如果想先用「角色」理解整個系統，建議先看 [`PROJECT_ROLE_GUIDE.md`](PROJECT_ROLE_GUIDE.md)。該文件用 LP、Borrower、Liquidator、Protocol、DAO 與 Oracle Owner 的角度，整理每個角色的操作流程、獲利方式、風險與 demo 講法。
 
 ### LP 流動性
 
@@ -132,7 +132,7 @@ delegate -> propose -> voting delay -> vote -> voting period -> queue -> timeloc
 
 ## 前端功能
 
-前端位於 `frontend/`，使用靜態 HTML/CSS/JavaScript 與 ethers v6。
+前端位於 [`frontend/`](frontend/)，使用靜態 HTML/CSS/JavaScript 與 ethers v6。
 
 | 頁面 | 功能 |
 | --- | --- |
@@ -193,7 +193,7 @@ npm run node
 npm run deploy:local
 ```
 
-部署腳本會部署所有合約，初始化權限，分配 BKT，撤銷 deployer timelock admin，並輸出 ABI/address 到 `frontend/`。
+部署腳本會部署所有合約，初始化權限，分配 BKT，撤銷 deployer timelock admin，並輸出 ABI/address 到 [`frontend/`](frontend/)。
 
 ### 6. 發放測試 mDAI
 
@@ -246,7 +246,7 @@ MetaMask 設定：
 9. Mine block、投票、queue、快轉 timelock、execute。
 10. Parameters 頁確認治理參數更新。
 
-完整展示細節可參考 `DEMO_FLOW.md` 與 `PRESENTATION_CHECKLIST.md`。
+完整展示細節可參考 [`DEMO_FLOW.md`](DEMO_FLOW.md) 與 [`PRESENTATION_CHECKLIST.md`](PRESENTATION_CHECKLIST.md)。
 
 ## 測試覆蓋
 
@@ -258,33 +258,33 @@ MetaMask 設定：
 
 | 測試檔 | 覆蓋內容 |
 | --- | --- |
-| `test/BankV3-test.js` | 抵押、借款、利息、清算、還款、提款限制 |
-| `test/comprehensive-onchain-flow-test.js` | 部署、LP、借款、還款、清算、reward、reserve、DAO governance 完整流程 |
-| `test/repay-test.js` | 還款拆分為本金、LP 收益與 protocol reserve |
-| `test/lp-supply-test.js` | LP supply、redeem、aMDAI share、reward |
-| `test/liquidation-test.js` | 清算成功條件、抵押品轉移、reserve 增加 |
-| `test/liquidation-lp-test.js` | 多 LP 情境下的清算與 reward |
-| `test/interest-test.js` | 清算時利息、LP pool、reserve 的會計變化 |
-| `test/reward-test.js` | Borrower / LP reward 累積與 claim |
-| `test/reward-test-liquidation-withdrawal.js` | 清算、提款與 dailyCap 邊界情境 |
-| `test/flashLoanMock.js` | 概念式 flash loan liquidation simulation |
+| [`test/BankV3-test.js`](test/BankV3-test.js) | 抵押、借款、利息、清算、還款、提款限制 |
+| [`test/comprehensive-onchain-flow-test.js`](test/comprehensive-onchain-flow-test.js) | 部署、LP、借款、還款、清算、reward、reserve、DAO governance 完整流程 |
+| [`test/repay-test.js`](test/repay-test.js) | 還款拆分為本金、LP 收益與 protocol reserve |
+| [`test/lp-supply-test.js`](test/lp-supply-test.js) | LP supply、redeem、aMDAI share、reward |
+| [`test/liquidation-test.js`](test/liquidation-test.js) | 清算成功條件、抵押品轉移、reserve 增加 |
+| [`test/liquidation-lp-test.js`](test/liquidation-lp-test.js) | 多 LP 情境下的清算與 reward |
+| [`test/interest-test.js`](test/interest-test.js) | 清算時利息、LP pool、reserve 的會計變化 |
+| [`test/reward-test.js`](test/reward-test.js) | Borrower / LP reward 累積與 claim |
+| [`test/reward-test-liquidation-withdrawal.js`](test/reward-test-liquidation-withdrawal.js) | 清算、提款與 dailyCap 邊界情境 |
+| [`test/flashLoanMock.js`](test/flashLoanMock.js) | 概念式 flash loan liquidation simulation |
 
 ## 專案檔案結構
 
-```text
-contracts/                    Solidity smart contracts
-frontend/                     Static DApp console and exported ABI/address files
-scripts/deploy.js             Deploy all contracts and export frontend artifacts
-scripts/transferMiniDai.js    Fund local demo accounts with mDAI
-scripts/test-*.js             Local demonstration scripts
-test/                         Hardhat test suite
-DEMO_FLOW.md                  Step-by-step demo script
-PROJECT_ROLE_GUIDE.md         Role-based project guide and profit flow explanation
-PROJECT_DIAGNOSTIC_REPORT.md  Technical diagnosis and future roadmap
-PORTFOLIO_WRITEUP.md          Portfolio-oriented project explanation
-PRESENTATION_CHECKLIST.md     Before-demo checklist and troubleshooting
-ADMISSIONS_APPLICATION_GUIDE.md  How to write this project in graduate application materials
-```
+| 路徑 | 用途 |
+| --- | --- |
+| [`contracts/`](contracts/) | Solidity smart contracts |
+| [`frontend/`](frontend/) | Static DApp console and exported ABI/address files |
+| [`scripts/deploy.js`](scripts/deploy.js) | Deploy all contracts and export frontend artifacts |
+| [`scripts/transferMiniDai.js`](scripts/transferMiniDai.js) | Fund local demo accounts with mDAI |
+| [`scripts/`](scripts/) | Local demonstration scripts |
+| [`test/`](test/) | Hardhat test suite |
+| [`DEMO_FLOW.md`](DEMO_FLOW.md) | Step-by-step demo script |
+| [`PROJECT_ROLE_GUIDE.md`](PROJECT_ROLE_GUIDE.md) | Role-based project guide and profit flow explanation |
+| [`PROJECT_DIAGNOSTIC_REPORT.md`](PROJECT_DIAGNOSTIC_REPORT.md) | Technical diagnosis and future roadmap |
+| [`PORTFOLIO_WRITEUP.md`](PORTFOLIO_WRITEUP.md) | Portfolio-oriented project explanation |
+| [`PRESENTATION_CHECKLIST.md`](PRESENTATION_CHECKLIST.md) | Before-demo checklist and troubleshooting |
+| [`ADMISSIONS_APPLICATION_GUIDE.md`](ADMISSIONS_APPLICATION_GUIDE.md) | How to write this project in graduate application materials |
 
 ## 與成熟協議的差異
 
@@ -316,11 +316,7 @@ MiniBank 是 prototype，因此保留一些有意識的簡化：
 
 如果要把此專案放進研究所推甄資料，建議不要只寫「我做了一個區塊鏈 DApp」。比較好的寫法是強調它是一個完整 DeFi lending protocol prototype，並說明你理解金融協議的風險模型、治理流程與工程驗證。
 
-可直接參考：
-
-```text
-ADMISSIONS_APPLICATION_GUIDE.md
-```
+可直接參考 [`ADMISSIONS_APPLICATION_GUIDE.md`](ADMISSIONS_APPLICATION_GUIDE.md)。
 
 一句話摘要：
 
@@ -330,9 +326,9 @@ ADMISSIONS_APPLICATION_GUIDE.md
 
 | 文件 | 用途 |
 | --- | --- |
-| `DEMO_FLOW.md` | 完整展示步驟 |
-| `PROJECT_ROLE_GUIDE.md` | 角色流程、獲利方式、資金流與易懂 demo 講法 |
-| `PRESENTATION_CHECKLIST.md` | 展示前檢查清單與錯誤排查 |
-| `PROJECT_DIAGNOSTIC_REPORT.md` | 專案限制、與成熟協議差異、後續優化方向 |
-| `PORTFOLIO_WRITEUP.md` | 作品集用說明 |
-| `ADMISSIONS_APPLICATION_GUIDE.md` | 推甄履歷、自傳、讀書計畫與面試寫法 |
+| [`DEMO_FLOW.md`](DEMO_FLOW.md) | 完整展示步驟 |
+| [`PROJECT_ROLE_GUIDE.md`](PROJECT_ROLE_GUIDE.md) | 角色流程、獲利方式、資金流與易懂 demo 講法 |
+| [`PRESENTATION_CHECKLIST.md`](PRESENTATION_CHECKLIST.md) | 展示前檢查清單與錯誤排查 |
+| [`PROJECT_DIAGNOSTIC_REPORT.md`](PROJECT_DIAGNOSTIC_REPORT.md) | 專案限制、與成熟協議差異、後續優化方向 |
+| [`PORTFOLIO_WRITEUP.md`](PORTFOLIO_WRITEUP.md) | 作品集用說明 |
+| [`ADMISSIONS_APPLICATION_GUIDE.md`](ADMISSIONS_APPLICATION_GUIDE.md) | 推甄履歷、自傳、讀書計畫與面試寫法 |

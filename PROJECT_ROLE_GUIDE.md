@@ -25,10 +25,10 @@ MiniBank 讓 LP 存入 mDAI 提供流動性，Borrower 抵押 ETH 借出 mDAI，
 
 | 資產 | 用途 | 對應合約 |
 | --- | --- | --- |
-| ETH | Borrower 的抵押品，也是 Liquidator 清算後取得的資產 | `BankV3.sol` 接收與保管 |
-| mDAI | 本地測試用穩定幣，LP 存入、Borrower 借出、Repay 與 Liquidation 使用 | `MiniDAI.sol` |
-| aMDAI | LP share token，代表 LP 在流動池中的份額 | `aMDAI.sol` |
-| BKT | Reward token 與 governance token | `BankToken.sol` |
+| ETH | Borrower 的抵押品，也是 Liquidator 清算後取得的資產 | [`BankV3.sol`](contracts/BankV3.sol) 接收與保管 |
+| mDAI | 本地測試用穩定幣，LP 存入、Borrower 借出、Repay 與 Liquidation 使用 | [`MiniDAI.sol`](contracts/MiniDAI.sol) |
+| aMDAI | LP share token，代表 LP 在流動池中的份額 | [`aMDAI.sol`](contracts/aMDAI.sol) |
+| BKT | Reward token 與 governance token | [`BankToken.sol`](contracts/BankToken.sol) |
 
 ## 核心角色總覽
 
@@ -276,10 +276,10 @@ DeFi 協議中的利率、reserve factor、reward emission 與 debt cap 會影�
 
 | 功能 | 合約 / 函式 |
 | --- | --- |
-| 投票權 token | `BankToken.sol` |
-| 建立提案與投票 | `BankGovernor.sol` |
-| 延遲執行 | `BankTimelock.sol` |
-| 更新 Bank 參數 | `BankV3.sol` 的 `onlyGovernance` 函式 |
+| 投票權 token | [`BankToken.sol`](contracts/BankToken.sol) |
+| 建立提案與投票 | [`BankGovernor.sol`](contracts/BankGovernor.sol) |
+| 延遲執行 | [`BankTimelock.sol`](contracts/BankTimelock.sol) |
+| 更新 Bank 參數 | [`BankV3.sol`](contracts/BankV3.sol) 的 `onlyGovernance` 函式 |
 
 ### Demo 時可以這樣講
 
@@ -412,13 +412,13 @@ execute
 
 | 合約 | 負責內容 |
 | --- | --- |
-| `BankV3.sol` | 核心借貸、LP pool、collateral、debt、interest、liquidation、reward、reserve、governance parameters |
-| `MiniDAI.sol` | 本地測試用穩定幣 mDAI |
-| `aMDAI.sol` | LP share token，只能由 BankV3 mint / burn |
-| `BankToken.sol` | BKT reward 與 governance token，支援 ERC20Votes |
-| `BankGovernor.sol` | DAO proposal、vote、queue、execute 流程 |
-| `BankTimelock.sol` | 治理執行前的延遲控制 |
-| `PriceOracle.sol` | 本地 demo 用 ETH/USD price feed |
+| [`BankV3.sol`](contracts/BankV3.sol) | 核心借貸、LP pool、collateral、debt、interest、liquidation、reward、reserve、governance parameters |
+| [`MiniDAI.sol`](contracts/MiniDAI.sol) | 本地測試用穩定幣 mDAI |
+| [`aMDAI.sol`](contracts/aMDAI.sol) | LP share token，只能由 BankV3 mint / burn |
+| [`BankToken.sol`](contracts/BankToken.sol) | BKT reward 與 governance token，支援 ERC20Votes |
+| [`BankGovernor.sol`](contracts/BankGovernor.sol) | DAO proposal、vote、queue、execute 流程 |
+| [`BankTimelock.sol`](contracts/BankTimelock.sol) | 治理執行前的延遲控制 |
+| [`PriceOracle.sol`](contracts/PriceOracle.sol) | 本地 demo 用 ETH/USD price feed |
 
 ## 收益與風險一句話版
 
