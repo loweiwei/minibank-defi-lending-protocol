@@ -62,6 +62,8 @@ flowchart LR
 
 ## 核心流程
 
+如果想先用「角色」理解整個系統，建議先看 `PROJECT_ROLE_GUIDE.md`。該文件用 LP、Borrower、Liquidator、Protocol、DAO 與 Oracle Owner 的角度，整理每個角色的操作流程、獲利方式、風險與 demo 講法。
+
 ### LP 流動性
 
 LP 持有 mDAI，先 approve BankV3，再呼叫 `supply(amount)`。BankV3 會收取 mDAI 並 mint aMDAI 給 LP，aMDAI 代表 LP 在池子中的 share。
@@ -277,6 +279,7 @@ scripts/transferMiniDai.js    Fund local demo accounts with mDAI
 scripts/test-*.js             Local demonstration scripts
 test/                         Hardhat test suite
 DEMO_FLOW.md                  Step-by-step demo script
+PROJECT_ROLE_GUIDE.md         Role-based project guide and profit flow explanation
 PROJECT_DIAGNOSTIC_REPORT.md  Technical diagnosis and future roadmap
 PORTFOLIO_WRITEUP.md          Portfolio-oriented project explanation
 PRESENTATION_CHECKLIST.md     Before-demo checklist and troubleshooting
@@ -328,6 +331,7 @@ ADMISSIONS_APPLICATION_GUIDE.md
 | 文件 | 用途 |
 | --- | --- |
 | `DEMO_FLOW.md` | 完整展示步驟 |
+| `PROJECT_ROLE_GUIDE.md` | 角色流程、獲利方式、資金流與易懂 demo 講法 |
 | `PRESENTATION_CHECKLIST.md` | 展示前檢查清單與錯誤排查 |
 | `PROJECT_DIAGNOSTIC_REPORT.md` | 專案限制、與成熟協議差異、後續優化方向 |
 | `PORTFOLIO_WRITEUP.md` | 作品集用說明 |
