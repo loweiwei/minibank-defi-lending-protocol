@@ -1,4 +1,3 @@
-require("hardhat-tracer");
 require("@nomicfoundation/hardhat-toolbox");
 
 module.exports = {

@@ -29,7 +29,7 @@ MiniBank 透過 ETH 抵押、mDAI 借款與 liquidation flow，展示這類協�
 | 層級 | 技術 |
 | --- | --- |
 | Smart Contract | Solidity 0.8.20、OpenZeppelin Contracts |
-| Development | Hardhat、hardhat-toolbox、hardhat-tracer |
+| Development | Hardhat、hardhat-toolbox |
 | Governance | ERC20Votes、Governor、TimelockController |
 | Frontend | 靜態 HTML/CSS/JavaScript、ethers v6、MetaMask |
 | Testing | Hardhat test、Chai、EVM time/block manipulation |

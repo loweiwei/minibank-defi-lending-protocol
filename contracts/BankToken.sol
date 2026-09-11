@@ -16,9 +16,10 @@ contract BankToken is ERC20Votes {
         ERC20("BankToken", "BKT")
         ERC20Permit("BankToken")
     {
-        _mint(msg.sender, _initialSupply); // ✅ 初始鑄造給部署者（由 deploy.js 負責分發）
+        _mint(msg.sender, _initialSupply); // Initial supply is distributed by the deployment script.
     }
-    // --- 以下為 ERC20Votes 的必要覆寫 ---
+
+    // Required ERC20Votes hooks for vote checkpoint accounting.
 
     function _afterTokenTransfer(address from, address to, uint256 amount)
         internal

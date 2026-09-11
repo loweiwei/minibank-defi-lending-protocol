@@ -7,26 +7,24 @@ import "./aMDAI.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-
 interface IBankToken {
-    //function mint(address to, uint256 amount) external;
     function transfer(address to, uint256 amount) external returns (bool);
-
 }
+
 interface IaMDAI {
     function mint(address to, uint256 amount) external;
     function burn(address from, uint256 amount) external;
     function totalSupply() external view returns (uint256);
-    function balanceOf(address account) external view returns (uint256); // ✅ 加這行
+    function balanceOf(address account) external view returns (uint256);
 }
-/*interface IFlashLoanReceiver {
-    function executeOperation(uint256 amount, uint256 fee, bytes calldata data) external returns (bool);
-}*/
 
+/// @title BankV3
+/// @notice Core MiniBank lending protocol for the local/testnet prototype.
+/// @dev Handles ETH collateral, mDAI liquidity, debt accounting, liquidation, BKT rewards, and DAO-controlled parameters.
 contract BankV3 is ReentrancyGuard {
     using SafeERC20 for MiniDAI;
 
-    // === 合約實例 ===
+    // === External contracts ===
     MiniDAI public miniDai;
     PriceOracle public priceOracle;
     IBankToken public bankToken;
@@ -34,46 +32,46 @@ contract BankV3 is ReentrancyGuard {
 
     address public governance;
 
-// === 狀態控制 ===
-
+    // === Protocol status ===
     Status public status;
     bool public governanceLocked = false;
-// === 參數 ===
-    // ===  DAO 可調參數（治理可控） ===
-    uint256 public interestRate = 500;           // 5% 年利率（萬分比）
-    uint256 public maxTotalDebt = 1_000_000 * 1e18; // 總債務上限
-    //!!!!
+
+    // === DAO-controlled risk and reward parameters ===
+    uint256 public interestRate = 500;           // Borrow interest rate, in basis points. 500 = 5% over the demo accrual period.
+    uint256 public maxTotalDebt = 1_000_000 * 1e18; // Governance-visible demo debt cap; not enforced by borrow() in this prototype.
     uint256 public reserveFactor = 1000;         // 協議利息抽成比例（10%）
-    uint256 public rewardRatio = 318287037037 ; // 每天總共發 0.01 BKT / USD;           // 每存入 1 mDAI 獲得 50 顆 BKT（單位：1e18）
+    uint256 public rewardRatio = 318287037037 ; // Legacy reward parameter kept for governance/demo visibility.
     uint256 public lpRewardRatio = 3e11;         // 每秒每 USD 給 LP 的發幣速率
     uint256 public borrowerRewardRatio = 1.5e11; // 給 Borrower 的發幣速率
     uint256 public dailyCap = 275e18;           // 每日最多發放 BKT 數量上限
     uint256 public lastRewardUpdateTime;     // 上一次 reward 結算時間戳（用來判斷是否跨日）
     uint256 public LTV = 8000;                   // 抵押品 LTV 值（80%）
-    //!!!!
     uint256 public LIQUIDATION_THRESHOLD = 9000; // 90% liquidation threshold, used inside the standard HF formula.
-    //!!!!
     uint256 public BONUS_PERCENT = 1000;         // 清算人可獲得 10% 額外 ETH 獎勵
     uint256 public MAX_ELAPSED_TIME = 30 days;   // 最長計息時間（避免利息爆炸）
-    // ===  常數參數（不可由 DAO 更動） ===
+
+    // === Fixed precision and liquidation constants ===
     uint256 public constant DECIMALS = 1e4;          // 比例精度（萬分比）
     uint256 public constant MAX_LIQUIDATION_PERCENT = 5000; // 最多可清算 50% 債務
-    uint256 constant PRICE_DIV = 1e26;               // ETH 價格轉換因子（1e8 × 1e18）
-    uint256 public constant SECONDS_PER_YEAR = 60;   // 測試用途：60 秒 = 1 年（方便觀察利息變化）
-    // ===  平台狀態參數 ===
+    uint256 constant PRICE_DIV = 1e26;               // Reserved price conversion constant kept for compatibility with earlier calculations.
+    uint256 public constant SECONDS_PER_YEAR = 60;   // Demo-only constant retained for frontend/test visibility.
+
+    // === Aggregate protocol accounting ===
     uint256 public liquidityPool;        // mDAI 流動性池（LP 提供）
     uint256 public totalDebtCached;      // 全部用戶債務（含利息）
     uint256 public totalCollateral;      // 全部用戶抵押的 ETH 總量
-    // ===  協議收益（利息 + 清算回收） ===
+
+    // === Protocol reserves ===
     uint256 public protocolTokenReserve; // MiniDAI 收益儲備
     uint256 public protocolETHReserve;   // ETH 收益儲備（清算回收）
-    // ===  發幣邏輯相關參數 ===
+
+    // === Reward emission accounting ===
     uint256 public distributedToday;         // 當日已發放的獎勳總量（BKT）
-    uint256 public lastRewardDay;        // 最後一次發獎勳的日數（timestamp / 1 days）
-    // ===  角色發幣比例（常數） ===
-    uint256 constant SUPPLIER_BASE = 7000;  // 存款者佔 70% 發幣獎勳
-    uint256 constant BORROWER_BASE = 3000;  // 借款者佔 30% 發幣獎勳
-// === STRUCT ===
+    uint256 public lastRewardDay;        // Legacy day counter retained for ABI/frontend compatibility.
+    uint256 constant SUPPLIER_BASE = 7000;  // Legacy role split constant retained for documentation/demo context.
+    uint256 constant BORROWER_BASE = 3000;  // Legacy role split constant retained for documentation/demo context.
+
+    // === User accounting structs ===
     struct DebtInfo {
         uint256 principal;
         uint256 lastAccrued;
@@ -81,16 +79,18 @@ contract BankV3 is ReentrancyGuard {
     struct RewardInfo {
         uint256 lastUpdate;      // 上次更新時間
         uint256 unclaimedBKT;    // 累積的可領獎勳
-        uint256 supplyAmount;    // 存入資產量（mDAI or ETH）
+        uint256 supplyAmount;    // Reward base: LP supplied mDAI or borrower outstanding debt.
     }
-// === mapping (debts)(collateral)(lpJoinedAt)(collateralJoinedAt) ===
-    mapping(address => uint256) public collateral; // === 抵押資訊（ETH） ===
+
+    // === Per-user state ===
+    mapping(address => uint256) public collateral; // User ETH collateral, in wei.
     mapping(address => uint256) public lpJoinedAt;            // LP 供應時間
     mapping(address => uint256) public collateralJoinedAt;    // 抵押 ETH 的時間
-    mapping(address => RewardInfo) public lpRewards;        // for LP
-    mapping(address => RewardInfo) public borrowerRewards;  // for borrower
+    mapping(address => RewardInfo) public lpRewards;        // LP reward accounting.
+    mapping(address => RewardInfo) public borrowerRewards;  // Borrower reward accounting.
     mapping(address => DebtInfo) public debts;
-// === Events ===
+
+    // === Events ===
     event Borrowed(address indexed user, uint256 amount);
     event RepaidDetailed(address indexed user, uint256 burned, uint256 toLP, uint256 toProtocol);
     event Liquidated(address indexed liquidator, address indexed user, uint256 seizedCollateral);
@@ -108,7 +108,7 @@ contract BankV3 is ReentrancyGuard {
     event GovernanceTransferred(address oldGov, address newGov);
     event RewardClaimed(address indexed user, uint256 amount);
 
-// === Modifiers ===
+    // === Access control ===
     modifier onlyGovernance() {
         require(
             msg.sender == governance ,
@@ -118,91 +118,110 @@ contract BankV3 is ReentrancyGuard {
     }
     enum Status { STARTED, PAUSED, CLOSED }
     modifier onlyStarted() { require(status == Status.STARTED, "Not started"); _; }
-// === Constructor ===
+
+    // === Constructor ===
     constructor(address _miniDai, address _oracle, address _governance, address _bkt, address _aMDAI) {
         miniDai = MiniDAI(_miniDai);
         priceOracle = PriceOracle(_oracle);
         governance = _governance;
         bankToken = IBankToken(_bkt);
-        aMDAIToken = IaMDAI(_aMDAI); // ✅ 使用新變數名
+        aMDAIToken = IaMDAI(_aMDAI);
         status = Status.STARTED;
         lastRewardUpdateTime = block.timestamp;
     }
 
-// === dao ===
+    // === DAO parameter management ===
+    /// @notice Updates the borrower interest rate. Only the governance/timelock address can call this.
     function setInterestRate(uint256 newRate) external onlyGovernance {
         require(newRate <= 2000, "Too high");
         interestRate = newRate;
     }
+
+    /// @notice Updates the legacy reward ratio kept for demo/governance visibility.
     function setRewardRatio(uint256 newRatio) external onlyGovernance {
         rewardRatio = newRatio;
         emit RewardRatioChanged(newRatio);
     }
-    //
+
+    /// @notice Updates the BKT emission rate for LP providers.
     function setLPRewardRatio(uint256 newRatio) external onlyGovernance {
         lpRewardRatio = newRatio;
     }
+
+    /// @notice Updates the BKT emission rate for borrowers.
     function setBorrowerRewardRatio(uint256 newRatio) external onlyGovernance {
         borrowerRewardRatio = newRatio;
     }
-    //
+
+    /// @notice Updates the daily BKT emission cap.
     function setDailyCap(uint256 newCap) external onlyGovernance {
         dailyCap = newCap;
         emit DailyCapChanged(newCap);
     }
+
+    /// @notice Updates the percentage of interest/liquidation repayment kept as protocol reserve.
     function setReserveFactor(uint256 newFactor) external onlyGovernance {
         require(newFactor <= 2000, "Too high");
         reserveFactor = newFactor;
     }
+
+    /// @notice Updates the governance-visible debt cap used by the frontend/demo.
     function setMaxTotalDebt(uint256 newMax) external onlyGovernance {
         require(newMax >= 100_000 * 1e18, "Too low");
         maxTotalDebt = newMax;
     }
-    //還沒用dap
+
+    /// @notice Transfers governance before it is locked.
     function setGovernance(address newGov) external onlyGovernance {
         require(!governanceLocked, "Governance is locked");
         governance = newGov;
     }
-    //還沒用dap
+    /// @notice Permanently disables future governance address changes.
     function lockGovernance() external onlyGovernance {
         governanceLocked = true;
     }
-    //還沒用dap
+    /// @notice Pauses, resumes, or closes protocol actions.
     function changeStatus(Status _status) external onlyGovernance {
         status = _status;
         emit StatusChanged(_status);
     }
-    //治理者（DAO） 提領「協議的收益」
-    //(more)把 protocolTokenReserve 定期「再注入流動性池」function injectProtocolEarningsToLP(uint256 amount)
+
+    /// @notice Allows governance to withdraw ETH reserves tracked by the protocol.
     function withdrawETHReserve(address to, uint256 amount) external onlyGovernance nonReentrant {
         require(amount <= protocolETHReserve, "Insufficient reserve");
         protocolETHReserve -= amount;
         _sendETH(to, amount);
         emit ReserveWithdrawn(to, amount);
     }
+
+    /// @notice Allows governance to withdraw accumulated mDAI protocol reserve.
     function withdrawTokenReserve(address to, uint256 amount) external onlyGovernance nonReentrant {
         require(amount <= protocolTokenReserve, "Too much");
         protocolTokenReserve -= amount;
         miniDai.safeTransfer(to, amount);
-        emit ReserveWithdrawn(to, amount); // 建議補上
+        emit ReserveWithdrawn(to, amount);
 
     }
+
+    /// @notice Recycles protocol mDAI earnings back into LP liquidity instead of withdrawing them.
     function injectProtocolEarningsToLP(uint256 amount) external onlyGovernance {
         require(amount <= protocolTokenReserve, "Too much");
 
         protocolTokenReserve -= amount;
         liquidityPool += amount;
 
-        emit ProtocolEarningsInjected(amount); // amount 是 MiniDAI
+        emit ProtocolEarningsInjected(amount);
     }
+
+    /// @notice Transfers governance and emits an event for frontend/indexer visibility.
     function transferGovernance(address newGov) external onlyGovernance {
         require(!governanceLocked, "Governance locked");
         emit GovernanceTransferred(governance, newGov);
         governance = newGov;
     }
 
-// === 核心功能 ===
-// === Internal ===
+    // === Internal accounting helpers ===
+    /// @dev Materializes accrued interest into principal so later operations use fresh debt.
     function _updateDebt(address user) internal {
         uint256 old = debts[user].principal;
         (uint256 principal, uint256 interest) = getUserDebt(user);
@@ -215,21 +234,27 @@ contract BankV3 is ReentrancyGuard {
         } else if (old > updated) {
             uint256 diff = old - updated;
             if (totalDebtCached >= diff) totalDebtCached -= diff;
-            else totalDebtCached = 0; // 最保守 fallback
+            else totalDebtCached = 0;
         }
     }
+
+    /// @dev Sends ETH using call and reverts on failure.
     function _sendETH(address to, uint256 amount) internal {
         (bool ok, ) = payable(to).call{value: amount}("");
         require(ok, "ETH transfer failed");
     }
+
+    /// @notice Returns principal plus currently accrued interest for a borrower.
     function _accruedDebt(address user) public view returns (uint256) {
         DebtInfo memory d = debts[user];
         uint256 elapsed = block.timestamp - d.lastAccrued;
         if (elapsed > MAX_ELAPSED_TIME) elapsed = MAX_ELAPSED_TIME;
-        // ✅ 同樣改成ˇ365 -> 1 days 做快速測試用
+        // Demo uses 1 day as the interest period so accrual is observable in local tests.
         uint256 interest = (d.principal * interestRate * elapsed) / (1 days * DECIMALS);
         return d.principal + interest;
     }
+
+    /// @dev Settles BKT rewards for either LP or borrower role before changing that user's reward base.
     function _updateReward(address user, bool isLP) internal {
         RewardInfo storage info = isLP ? lpRewards[user] : borrowerRewards[user];
         uint256 current = block.timestamp;
@@ -249,20 +274,17 @@ contract BankV3 is ReentrancyGuard {
             usdValue = info.supplyAmount;
         }
 
-        // ✅ 根據角色選擇對應 reward ratio
+        // LP and borrower use different reward speeds to model role-specific incentives.
         uint256 ratio = isLP ? lpRewardRatio : borrowerRewardRatio;
         uint256 pending = usdValue * ratio * timeElapsed / 1e18;
-        //uint256 pending = usdValue * rewardRatio * timeElapsed / 1e18;
 
-        // ✅ 檢查是否跨天：如果有，就重設 daily counter
+        // Reset the daily emission counter when the timestamp crosses into a new UTC day.
         if (current / 1 days > lastRewardUpdateTime / 1 days) {
             distributedToday = 0;
         }
 
-        // ✅ 計算當天剩下能發的數量
         uint256 available = dailyCap > distributedToday ? (dailyCap - distributedToday) : 0;
 
-        // ✅ 套用 cap 限制
         if (pending > available) {
             pending = available;
         }
@@ -272,7 +294,9 @@ contract BankV3 is ReentrancyGuard {
         distributedToday += pending;
         lastRewardUpdateTime = current;
     }
-// === 一般動作 (normal user) ===
+    // === Borrower actions ===
+    /// @notice Borrows mDAI against the caller's ETH collateral.
+    /// @dev Checks both LTV and available LP liquidity before transferring mDAI out.
     function borrow(uint256 amount) external onlyStarted {
         _updateReward(msg.sender, false);
         _updateDebt(msg.sender);
@@ -291,10 +315,11 @@ contract BankV3 is ReentrancyGuard {
         miniDai.safeTransfer(msg.sender, amount);
         emit Borrowed(msg.sender, amount);
     }
+
+    /// @notice Deposits ETH collateral for future borrowing.
     function depositCollateral() external payable onlyStarted {
         require(msg.value > 0, "Zero collateral");
 
-        // ⏱️ 如果是首次抵押，記錄加入時間
         if (collateral[msg.sender] == 0) {
             collateralJoinedAt[msg.sender] = block.timestamp;
         }
@@ -303,6 +328,8 @@ contract BankV3 is ReentrancyGuard {
 
         emit CollateralDeposited(msg.sender, msg.value);
     }
+
+    /// @notice Withdraws ETH collateral while keeping the account above the required LTV.
     function withdrawCollateral(uint256 amount) external onlyStarted nonReentrant {
         require(amount > 0 && amount <= collateral[msg.sender], "Invalid");
 
@@ -313,7 +340,7 @@ contract BankV3 is ReentrancyGuard {
         uint256 newCol = collateral[msg.sender] - amount;
         uint256 debt = _accruedDebt(msg.sender);
 
-        // ✅ 僅當有債務時才做抵押率限制
+        // Collateral can be freely withdrawn only when there is no outstanding debt.
         if (debt > 0) {
             uint256 ethPrice = priceOracle.getLatestETHPrice(); // 1e8
             uint256 newColUSD = (newCol * ethPrice) / 1e8;
@@ -332,65 +359,59 @@ contract BankV3 is ReentrancyGuard {
         _sendETH(msg.sender, amount);
         emit CollateralWithdrawn(msg.sender, amount);
     }
+
+    /// @notice Repays mDAI debt and splits the payment into principal, LP income, and protocol reserve.
     function repay(uint256 amount) external onlyStarted {
         require(amount > 0, "Zero repay");
         _updateReward(msg.sender, false);
 
-        // 查詢當前債務
         (uint256 principal, uint256 interest) = getUserDebt(msg.sender);
         uint256 userTotalDebt = principal + interest;
         require(userTotalDebt > 0, "No debt");
 
         uint256 actualAmount = amount > userTotalDebt ? userTotalDebt : amount;
 
-        // ✅ 先收全額，再退多的（為保證順序與邏輯）
+        // Pull the requested amount first, then refund any overpayment above total debt.
         miniDai.safeTransferFrom(msg.sender, address(this), amount);
 
-        // ✅ 如果多給了，就退還差額
         if (amount > actualAmount) {
             uint256 refund = amount - actualAmount;
             miniDai.safeTransfer(msg.sender, refund);
         }
 
-        // === 拆分邏輯 ===
-
-        // 計算要燒掉多少本金
+        // Interest is paid first. Any remaining repayment reduces principal.
         uint256 toBurn = actualAmount >= userTotalDebt
             ? principal
             : actualAmount > interest
                 ? actualAmount - interest
                 : 0;
 
-        // 給協議的收入（依利息比例）
+        // Protocol reserve is taken from the interest-paid portion.
         uint256 toProtocol = actualAmount > interest
             ? interest * reserveFactor / DECIMALS
             : actualAmount * reserveFactor / DECIMALS;
 
-        // 剩下給 LP
+        // The remainder returns to LP liquidity as interest income.
         uint256 toLP = actualAmount - toBurn - toProtocol;
 
-        // ✅ 如果要燒本金
         if (toBurn > 0) {
-            // ✅ 不再 burn
             debts[msg.sender].principal -= toBurn;
             totalDebtCached -= toBurn;
-            // ⬆ 本金記帳減少
-            // 資金面：toBurn 的 mDAI 已經在 transferFrom 中進 Pool
-            // 所以只需更新帳本，不動資金
         }
 
-
-        // 更新利息時間點（principal 已調整）
+        // Refresh accrual timestamp after principal has been adjusted.
         _updateDebt(msg.sender);
         borrowerRewards[msg.sender].supplyAmount = debts[msg.sender].principal;
 
-        // 分配利息收益
         liquidityPool += toLP + toBurn;
         protocolTokenReserve += toProtocol;
 
         emit RepaidDetailed(msg.sender, toBurn, toLP, toProtocol);
     }
-// === 清算人 ===
+
+    // === Liquidation ===
+    /// @notice Liquidates an unhealthy borrower by repaying mDAI and receiving seized ETH collateral.
+    /// @dev Requires health factor below 1. Repay amount is capped by close factor and available collateral.
     function liquidate(address user, uint256 repayAmount) external onlyStarted nonReentrant {
         require(repayAmount > 0, "Zero repay");
         (uint256 rawPrincipal, uint256 interest) = getUserDebt(user);
@@ -401,6 +422,7 @@ contract BankV3 is ReentrancyGuard {
 
         uint256 principalBefore = debts[user].principal;
 
+        // Close factor limits how much debt can be liquidated in a single transaction.
         uint256 maxRepay = principalBefore * MAX_LIQUIDATION_PERCENT / 10000;
 
         if (repayAmount > maxRepay) {
@@ -411,6 +433,7 @@ contract BankV3 is ReentrancyGuard {
 
         uint256 userCollateral = collateral[user];
 
+        // Cap repay so seized collateral never exceeds the borrower's available ETH.
         uint256 maxRewardUSD = userCollateral * ethPrice / 1e18;
 
         uint256 maxEffectiveRepay = maxRewardUSD * DECIMALS / (BONUS_PERCENT + DECIMALS);
@@ -445,10 +468,9 @@ contract BankV3 is ReentrancyGuard {
             seized = userCollateral;
         }
 
-        // Settle rewards before reducing collateral so future rewards use the lower base.
+        // Settle borrower rewards before changing debt/collateral bases.
         _updateReward(user, false);
 
-        // Update borrower state
         collateral[user] -= seized;
         totalCollateral -= seized;
 
@@ -474,33 +496,31 @@ contract BankV3 is ReentrancyGuard {
         emit Liquidated(msg.sender, user, seized);
         emit RepaidDetailed(user, burned, toLP, protocolShare);
     }
+
+    /// @notice Estimates the maximum mDAI amount that can be used to liquidate a borrower now.
     function estimateMaxLiquidate(address user) external view returns (uint256) {
         uint256 principal = debts[user].principal;
         if (principal == 0) return 0;
 
         uint256 maxRepay = principal * MAX_LIQUIDATION_PERCENT / 1e4;
 
-        uint256 ethPrice = priceOracle.getLatestETHPrice() * 1e10; // → 1e18 USD/ETH
+        uint256 ethPrice = priceOracle.getLatestETHPrice() * 1e10; // Convert oracle 1e8 price to 1e18 scale.
         uint256 colETH = collateral[user];
 
-        // 抵押物的價值（USD, 1e18）
         uint256 maxRewardUSD = (colETH * ethPrice) / 1e18;
 
-        // 根據 BONUS 計算出有效 mDAI 上限
         uint256 maxEffectiveRepay = maxRewardUSD * DECIMALS / (BONUS_PERCENT + DECIMALS);
 
-        // 還要考慮 protocol 抽成：這是清算人最多可還的總額
         uint256 maxRepayWithProtocol = maxEffectiveRepay * (1e4 + reserveFactor) / 1e4;
 
-        // 取兩者較小的值，作為實際最大可還款
         return maxRepayWithProtocol < maxRepay ? maxRepayWithProtocol : maxRepay;
     }
 
-// === LP 功能 ===
-    //使用者把資金存進流動池 → 可借給他人
+    // === LP liquidity ===
+    /// @notice Supplies mDAI to the lending pool and receives aMDAI pool shares.
     function supply(uint256 amount) external onlyStarted nonReentrant {
         require(amount > 0, "Zero supply");
-        _updateReward(msg.sender, true); // true = LP
+        _updateReward(msg.sender, true);
         miniDai.safeTransferFrom(msg.sender, address(this), amount);
 
         uint256 poolBefore = liquidityPool;
@@ -519,11 +539,12 @@ contract BankV3 is ReentrancyGuard {
 
         emit Supplied(msg.sender, amount, shares);
     }
-    //使用者把資金(mdai)->()
+
+    /// @notice Burns aMDAI shares and redeems the caller's proportional mDAI from the pool.
     function redeem(uint256 amount) external onlyStarted nonReentrant {
         require(amount > 0, "Zero redeem");
 
-        _updateReward(msg.sender, true); // LP
+        _updateReward(msg.sender, true);
 
         uint256 totalSupply = aMDAIToken.totalSupply();
         require(totalSupply > 0, "No aMDAIToken");
@@ -543,6 +564,8 @@ contract BankV3 is ReentrancyGuard {
 
         emit Redeemed(msg.sender, redeemAmount, amount);
     }
+
+    /// @notice Returns current mDAI per aMDAI share, scaled by 1e18.
     function getExchangeRate() public view returns (uint256) {
         uint256 totalShares = aMDAIToken.totalSupply();
 
@@ -552,7 +575,9 @@ contract BankV3 is ReentrancyGuard {
 
         return liquidityPool * 1e18 / totalShares;
     }
-// === 領BKT ===
+    // === Rewards ===
+    /// @notice Claims accumulated BKT rewards for either LP role or borrower role.
+    /// @param isLP true claims LP rewards; false claims borrower rewards.
     function claimReward(bool isLP) external {
         _updateReward(msg.sender, isLP);
         RewardInfo storage info = isLP ? lpRewards[msg.sender] : borrowerRewards[msg.sender];
@@ -564,24 +589,33 @@ contract BankV3 is ReentrancyGuard {
         require(bankToken.transfer(msg.sender, amount), "BKT transfer failed");
         emit RewardClaimed(msg.sender, amount);
     }
-// === Views ===
+
+    // === View helpers ===
     function getBorrowerRewardInfo(address user) external view returns (RewardInfo memory) {
         return borrowerRewards[user];
     }
+
+    /// @notice Returns a user's ETH collateral value in mDAI/USD precision.
     function getCollateralValueUSD(address user) public view returns (uint256) {
         return collateral[user] * priceOracle.getLatestETHPrice() / 1e8;
     }
+
+    /// @notice Returns health factor scaled by 1e4. Values below 1e4 mean the position is liquidatable.
     function getHealthFactor(address user) public view returns (uint256) {
         uint256 debt = _accruedDebt(user);
         if (debt == 0) return type(uint256).max;
         if (collateral[user] < 1e10) return 0;
         return getCollateralValueUSD(user) * LIQUIDATION_THRESHOLD / debt;
     }
+
+    /// @notice Returns pool utilization as debt / total assets, scaled by 1e4.
     function getUtilizationRate() public view returns (uint256) {
         uint256 totalAssets = totalDebtCached + liquidityPool;
         if (totalAssets == 0) return 0;
         return totalDebtCached * DECIMALS / totalAssets;
     }
+
+    /// @notice Returns how much ETH a borrower can withdraw without breaking LTV.
     function getMaxWithdrawableETH(address user) external view returns (uint256) {
         uint256 ethPrice = priceOracle.getLatestETHPrice(); // 1e8
         uint256 debt = _accruedDebt(user); // 1e18 wei = mDAI
@@ -591,7 +625,7 @@ contract BankV3 is ReentrancyGuard {
             return userColETH;
         }
 
-        // 不要除以 1e18，保持 1e18 精度的 USD
+        // Keep values in 1e18 mDAI/USD precision to avoid truncation during risk checks.
         uint256 minRequiredColUSD = (debt * DECIMALS) / LTV;
         uint256 currentColUSD = (userColETH * ethPrice) / 1e8;
 
@@ -599,17 +633,19 @@ contract BankV3 is ReentrancyGuard {
 
         uint256 withdrawableUSD = currentColUSD - minRequiredColUSD;
 
-        // ✅ 正確單位：ETH（wei）
         return (withdrawableUSD * 1e8) / ethPrice;
     }
+
+    /// @notice Returns the user's stored principal and newly accrued interest.
     function getUserDebt(address user) public view returns (uint256 principal, uint256 interest) {
         DebtInfo memory d = debts[user];
         uint256 elapsed = block.timestamp - d.lastAccrued;
         if (elapsed > MAX_ELAPSED_TIME) elapsed = MAX_ELAPSED_TIME;
-        //改成365 -> 1 天(利率變動)
         uint256 accrued = d.principal * interestRate * elapsed / (1 days * DECIMALS);
         return (d.principal, accrued);
     }
+
+    /// @notice Returns collateral value, total debt, and remaining borrow capacity for a user.
     function getUserAccountData(address user) external view returns (
         uint256 collateralUSD,
         uint256 debt,
@@ -636,7 +672,7 @@ contract BankV3 is ReentrancyGuard {
     function getStatus() external view returns (Status) {
         return status;
     }
-    /// @notice 回傳清算觸發價格（USD×1e8）。當 ETH 價格低於此值即可清算。
+    /// @notice Returns the ETH price at which the user's health factor reaches 1.
     function getLiquidationPrice(address user) external view returns (uint256) {
         uint256 principalWei = _accruedDebt(user);   // DAI-wei
         uint256 collateralWei = collateral[user];          // ETH-wei
@@ -644,16 +680,18 @@ contract BankV3 is ReentrancyGuard {
             return 0;
         }
 
-        // 1. 將債務（DAI-wei）換算成 USD×1e8
-        //    principalWei / 1e18 → DAI (≈USD)，再乘 1e8
+        // Convert DAI-wei debt to USD with 8 decimals, matching the oracle scale.
         uint256 debtUSD8 = principalWei * 1e8 / 1e18;
 
-        // 2. 反推標準 HF = 1 的 ETH 價格。
+        // Rearranged health factor formula solved for ETH price when HF = 1.
         return debtUSD8 * DECIMALS * 1e18 / (collateralWei * LIQUIDATION_THRESHOLD);
     }
+
     function getTotalSupplied() external view returns (uint256) {
         return liquidityPool;
     }
+
+    /// @notice Returns LP share balance, total shares, pool share percentage, and redeemable mDAI.
     function getLPInfo(address user) external view returns (
         uint256 userAMDAI,
         uint256 totalAMDAI,
@@ -667,16 +705,20 @@ contract BankV3 is ReentrancyGuard {
 
         return (userShare, totalShares, percent, redeemable);
     }
-    /// @notice 回傳尚未納入本金的即時計算利息
+
+    /// @notice Returns current interest that has accrued but has not yet been materialized into principal.
     function previewInterest(address user) public view returns (uint256) {
-        (, uint256 interest) = getUserDebt(user); // ✅ 利用現有 view 計算
+        (, uint256 interest) = getUserDebt(user);
         return interest;
     }
-    /// @notice 傳回總債務（本金 + 利息）
+
+    /// @notice Returns principal plus currently accrued interest.
     function getTotalDebt(address user) external view returns (uint256) {
         (uint256 principal, uint256 interest) = getUserDebt(user);
         return principal + interest;
     }
+
+    /// @notice Debug helper for frontend/tests to inspect debt accrual components.
     function debugDebtDetail(address user) external view returns (
         uint256 principal,
         uint256 interestRate_,
@@ -698,6 +740,8 @@ contract BankV3 is ReentrancyGuard {
             d.principal + interestAccrued
         );
     }
+
+    /// @notice Debug helper for inspecting elapsed time since the last debt accrual update.
     function debugElapsed(address user) external view returns (
         uint256 principal,
         uint256 elapsed,
@@ -707,6 +751,8 @@ contract BankV3 is ReentrancyGuard {
         DebtInfo memory d = debts[user];
         return (d.principal, block.timestamp - d.lastAccrued, block.timestamp, d.lastAccrued);
     }
+
+    /// @notice Returns uncapped reward preview for either LP or borrower role.
     function getUnclaimedReward(address user, bool isLP) external view returns (uint256) {
         RewardInfo storage info = isLP ? lpRewards[user] : borrowerRewards[user];
 
@@ -726,11 +772,12 @@ contract BankV3 is ReentrancyGuard {
             usdValue = info.supplyAmount;
         }
 
-        // ✅ 根據角色選擇對應 reward ratio
         uint256 ratio = isLP ? lpRewardRatio : borrowerRewardRatio;
         uint256 pending = usdValue * ratio * timeElapsed / 1e18;
         return info.unclaimedBKT + pending;
     }
+
+    /// @notice Returns reward preview after applying the daily emission cap.
     function getRewardPreviewCapped(address user, bool isLP) external view returns (uint256) {
         RewardInfo storage info = isLP ? lpRewards[user] : borrowerRewards[user];
 
@@ -750,9 +797,6 @@ contract BankV3 is ReentrancyGuard {
             usdValue = info.supplyAmount;
         }
 
-        //uint256 pending = usdValue * rewardRatio * timeElapsed / 1e18;
-
-            // ✅ 根據角色選擇對應 reward ratio
         uint256 ratio = isLP ? lpRewardRatio : borrowerRewardRatio;
         uint256 pending = usdValue * ratio * timeElapsed / 1e18;
         uint256 distributed = (block.timestamp / 1 days > lastRewardUpdateTime / 1 days)
@@ -766,10 +810,11 @@ contract BankV3 is ReentrancyGuard {
 
         return info.unclaimedBKT + pending;
     }
+
+    /// @notice Returns the reward amount claimable if it were settled now, capped by remaining daily budget.
     function getPendingReward(address user, bool isLP) public view returns (uint256) {
         RewardInfo storage info = isLP ? lpRewards[user] : borrowerRewards[user];
 
-        // 沒有初始化過，就沒有 pending reward
         if (info.lastUpdate == 0 || info.supplyAmount == 0) {
             return info.unclaimedBKT;
         }
@@ -787,11 +832,9 @@ contract BankV3 is ReentrancyGuard {
             usdValue = info.supplyAmount;
         }
 
-        //uint256 pending = usdValue * rewardRatio * timeElapsed / 1e18;
-        // ✅ 根據角色選擇對應 reward ratio
         uint256 ratio = isLP ? lpRewardRatio : borrowerRewardRatio;
         uint256 pending = usdValue * ratio * timeElapsed / 1e18;
-        // 預估 dailyCap 還剩多少（不影響 distributedToday）
+
         uint256 available = dailyCap > distributedToday ? (dailyCap - distributedToday) : 0;
         if (pending > available) {
             pending = available;
@@ -799,7 +842,8 @@ contract BankV3 is ReentrancyGuard {
 
         return info.unclaimedBKT + pending;
     }
-/// @notice 禁止直接轉帳
+
+    /// @notice Rejects direct ETH transfers except governance-controlled sends.
     receive() external payable {
         require(msg.sender == governance, "Only DAO can send ETH");
     }

@@ -17,8 +17,7 @@
     "@nomicfoundation/ethereumjs-util": "^9.0.4",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "ethereumjs-util": "^7.1.5",
-    "hardhat": "^2.24.0",
-    "hardhat-tracer": "^3.2.0"
+    "hardhat": "2.21.0"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^4.9.3"

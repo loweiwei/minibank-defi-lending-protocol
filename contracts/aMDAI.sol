@@ -4,7 +4,9 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-/// @title aMDAI - 代表 ETH 存款的利息累積代幣
+/// @title aMDAI
+/// @notice LP share token representing a user's proportional ownership of the mDAI liquidity pool.
+/// @dev Only BankV3 can mint on supply or burn on redeem.
 contract aMDAI is ERC20, Ownable {
     address public bank;
 

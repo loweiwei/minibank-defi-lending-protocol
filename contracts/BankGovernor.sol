@@ -7,6 +7,9 @@ import "@openzeppelin/contracts/governance/extensions/GovernorVotes.sol";
 import "@openzeppelin/contracts/governance/extensions/GovernorTimelockControl.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Votes.sol";
 
+/// @title BankGovernor
+/// @notice DAO governance contract for MiniBank protocol parameters.
+/// @dev Uses BKT voting power, simple vote counting, and Timelock execution.
 contract BankGovernor is
     Governor,
     GovernorCountingSimple,
@@ -14,7 +17,7 @@ contract BankGovernor is
     GovernorTimelockControl
 {
     uint256 public proposalThresholdBKT;
-    uint256 public quorumPercent; // 4 表示 4%
+    uint256 public quorumPercent; // Example: 4 means 4% of historical BKT supply.
 
     constructor(
         ERC20Votes _token,
@@ -30,31 +33,38 @@ contract BankGovernor is
         quorumPercent = _initialQuorumPercent;
     }
 
-    // 可由 DAO 執行（Timelock）
+    /// @notice Updates proposal creation threshold through a successful governance proposal.
     function setProposalThreshold(uint256 newThreshold) external onlyGovernance {
         proposalThresholdBKT = newThreshold;
     }
+
+    /// @notice Updates quorum percentage through a successful governance proposal.
     function setQuorumPercent(uint256 newPercent) external onlyGovernance {
         require(newPercent <= 100, "Too high");
         quorumPercent = newPercent;
     }
 
+    /// @notice Minimum BKT voting power required to create a proposal.
     function proposalThreshold() public view override returns (uint256) {
         return proposalThresholdBKT;
     }
 
+    /// @notice Required voting power participation at a historical block.
     function quorum(uint256 blockNumber) public view override returns (uint256) {
         return token.getPastTotalSupply(blockNumber) * quorumPercent / 100;
     }
 
+    /// @notice Short local-demo voting delay; production governance would use a longer delay.
     function votingDelay() public pure override returns (uint256) {
-        return 1; // 1 區塊延遲
+        return 1;
     }
 
+    /// @notice Short local-demo voting period; production governance would use a longer period.
     function votingPeriod() public pure override returns (uint256) {
         return 4;
     }
-    ////////
+
+    /// @notice Exposes the final executor address for frontend/debug display.
     function viewExecutor() public view returns (address) {
         return _executor();
     }
